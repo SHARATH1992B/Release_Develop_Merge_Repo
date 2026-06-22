@@ -1,4 +1,4 @@
-name: Auto-merge release branch to main (TEST)
+name: Auto-merge release branch to develop (TEST)
 
 on:
   workflow_dispatch: {}
@@ -7,7 +7,7 @@ on:
 
 jobs:
   merge:
-    name: Detect release branch and merge into main
+    name: Detect release branch and merge into develop
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -22,19 +22,26 @@ jobs:
 
       # ============================================================
       # BRANCH DETECTION
-      # Matches release/<anything>-<4-digit year>  e.g. release/2.3.0-2026
-      # Deliberately does NOT match:
-      #   - release/hotfix-no-year   (no year suffix)
-      #   - release-old-format       (no slash after "release")
-      #   - feature/*, Sharath/1.0, main, main (different prefixes)
-      # If multiple release/*-YYYY branches exist, picks the highest
-      # by version sort (so release/2.4.0-2026 wins over release/2.3.0-2026).
+      # Matches release/<anything>-<4-digit year>  e.g. release/1.1.0-2026
+      #
+      # FIX: `git branch -r` pads every line with leading whitespace
+      # (e.g. "  origin/release/1.1.0-2026"). The earlier version only
+      # stripped the "origin/" prefix and left the leading spaces in
+      # place, so the ^release/ anchor in grep never matched anything.
+      # The extra `sed 's/^[[:space:]]*//'` below trims that whitespace
+      # before the pattern check runs.
       # ============================================================
       - name: Identify release branch
         id: release_branch
         run: |
           git fetch origin --prune
-          BRANCH=$(git branch -r | sed 's|origin/||' | grep -E '^release/.*-[0-9]{4}$' | sort -V | tail -n1 | xargs)
+          BRANCH=$(git branch -r \
+            | sed 's|origin/||' \
+            | sed 's/^[[:space:]]*//' \
+            | grep -E '^release/.*-[0-9]{4}$' \
+            | sort -V \
+            | tail -n1 \
+            | xargs)
           if [ -z "$BRANCH" ]; then
             echo "No branch matching release/*-YYYY found. Skipping merge."
             echo "found=false" >> $GITHUB_OUTPUT
