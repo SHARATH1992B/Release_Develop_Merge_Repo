@@ -1,5 +1,2 @@
 #!bin/bash/
-hi kjbsdk.
-kfs.kvjn
-
-kjbsdkjkn
+echo "Version from MAIN branch"
