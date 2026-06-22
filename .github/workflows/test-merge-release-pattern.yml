@@ -1,4 +1,4 @@
-name: Auto-merge release branch to develop (TEST)
+name: Auto-merge release branch to main (TEST)
 
 on:
   workflow_dispatch: {}
@@ -7,7 +7,7 @@ on:
 
 jobs:
   merge:
-    name: Detect release branch and merge into develop
+    name: Detect release branch and merge into main
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -26,7 +26,7 @@ jobs:
       # Deliberately does NOT match:
       #   - release/hotfix-no-year   (no year suffix)
       #   - release-old-format       (no slash after "release")
-      #   - feature/*, Sharath/1.0, develop, main (different prefixes)
+      #   - feature/*, Sharath/1.0, main, main (different prefixes)
       # If multiple release/*-YYYY branches exist, picks the highest
       # by version sort (so release/2.4.0-2026 wins over release/2.3.0-2026).
       # ============================================================
