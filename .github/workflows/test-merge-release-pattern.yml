@@ -1,0 +1,68 @@
+name: Auto-merge release branch to develop (TEST)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 23 * * *'
+
+jobs:
+  merge:
+    name: Detect release branch and merge into develop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # ============================================================
+      # BRANCH DETECTION
+      # Matches release/<anything>-<4-digit year>  e.g. release/2.3.0-2026
+      # Deliberately does NOT match:
+      #   - release/hotfix-no-year   (no year suffix)
+      #   - release-old-format       (no slash after "release")
+      #   - feature/*, Sharath/1.0, develop, main (different prefixes)
+      # If multiple release/*-YYYY branches exist, picks the highest
+      # by version sort (so release/2.4.0-2026 wins over release/2.3.0-2026).
+      # ============================================================
+      - name: Identify release branch
+        id: release_branch
+        run: |
+          git fetch origin --prune
+          BRANCH=$(git branch -r | sed 's|origin/||' | grep -E '^release/.*-[0-9]{4}$' | sort -V | tail -n1 | xargs)
+          if [ -z "$BRANCH" ]; then
+            echo "No branch matching release/*-YYYY found. Skipping merge."
+            echo "found=false" >> $GITHUB_OUTPUT
+          else
+            echo "Detected release branch: $BRANCH"
+            echo "found=true" >> $GITHUB_OUTPUT
+            echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Attempt merge
+        if: steps.release_branch.outputs.found == 'true'
+        id: do_merge
+        run: |
+          BRANCH="${{ steps.release_branch.outputs.branch }}"
+          if git merge --no-ff "origin/$BRANCH" -m "Automated merge: $BRANCH -> develop"; then
+            git push origin develop
+            echo "status=success" >> $GITHUB_OUTPUT
+          else
+            git merge --abort
+            echo "status=conflict" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Report result
+        if: always()
+        run: |
+          echo "Branch detected: ${{ steps.release_branch.outputs.branch }}"
+          echo "Merge result: ${{ steps.do_merge.outputs.status }}"
+
+      - name: Fail job if conflict occurred
+        if: steps.do_merge.outputs.status == 'conflict'
+        run: exit 1
