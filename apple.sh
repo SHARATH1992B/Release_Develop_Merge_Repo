@@ -1,2 +1,2 @@
 #!bin/bash/
-echo "Version from RELEASE branch"
+echo "Version from MAIN branch"
