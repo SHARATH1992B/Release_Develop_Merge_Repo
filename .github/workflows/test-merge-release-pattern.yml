@@ -20,17 +20,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # ============================================================
-      # BRANCH DETECTION
-      # Matches release/<anything>-<4-digit year>  e.g. release/1.1.0-2026
-      #
-      # FIX: `git branch -r` pads every line with leading whitespace
-      # (e.g. "  origin/release/1.1.0-2026"). The earlier version only
-      # stripped the "origin/" prefix and left the leading spaces in
-      # place, so the ^release/ anchor in grep never matched anything.
-      # The extra `sed 's/^[[:space:]]*//'` below trims that whitespace
-      # before the pattern check runs.
-      # ============================================================
+
       - name: Identify release branch
         id: release_branch
         run: |
@@ -74,21 +64,7 @@ jobs:
         if: steps.do_merge.outputs.status == 'conflict'
         run: exit 1
 
-      # ============================================================
-      # TEAMS NOTIFICATIONS
-      #
-      # NOTE: Microsoft retired the old "Incoming Webhook" connector
-      # for Teams. As of mid-2026, new webhooks must be created via
-      # the Workflows app (Power Automate) using a
-      # "post to a channel when a webhook request is received"
-      # template, which gives you a webhook URL to POST to. The
-      # payload format below uses the Adaptive Card schema, which
-      # the Workflows webhook expects.
-      #
-      # Two separate notification steps: one for success, one for
-      # conflict. Only one of the two will ever fire per run, since
-      # each checks the opposite merge result.
-      # ============================================================
+
       - name: Notify Teams on success
         if: always() && steps.do_merge.outputs.status == 'success'
         run: |
