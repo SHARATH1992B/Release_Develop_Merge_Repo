@@ -73,3 +73,49 @@ jobs:
       - name: Fail job if conflict occurred
         if: steps.do_merge.outputs.status == 'conflict'
         run: exit 1
+
+      # ============================================================
+      # TEAMS NOTIFICATION (on conflict only)
+      #
+      # NOTE: Microsoft retired the old "Incoming Webhook" connector
+      # for Teams. As of mid-2026, new webhooks must be created via
+      # the Workflows app (Power Automate) using the
+      # "Send webhook alerts to a channel" template, which gives you
+      # a webhook URL to POST to. The payload format below uses the
+      # Adaptive Card schema, which the Workflows webhook expects.
+      # ============================================================
+      - name: Notify Teams on conflict
+        if: always() && steps.do_merge.outputs.status == 'conflict'
+        run: |
+          curl -H "Content-Type: application/json" -d '{
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "text": "⚠️ Auto-merge failed: conflict detected",
+                      "weight": "bolder",
+                      "size": "medium",
+                      "color": "attention"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} → main",
+                      "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Manual merge required. develop/main was NOT modified.",
+                      "wrap": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
