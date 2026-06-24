@@ -75,15 +75,56 @@ jobs:
         run: exit 1
 
       # ============================================================
-      # TEAMS NOTIFICATION (on conflict only)
+      # TEAMS NOTIFICATIONS
       #
       # NOTE: Microsoft retired the old "Incoming Webhook" connector
       # for Teams. As of mid-2026, new webhooks must be created via
-      # the Workflows app (Power Automate) using the
-      # "Send webhook alerts to a channel" template, which gives you
-      # a webhook URL to POST to. The payload format below uses the
-      # Adaptive Card schema, which the Workflows webhook expects.
+      # the Workflows app (Power Automate) using a
+      # "post to a channel when a webhook request is received"
+      # template, which gives you a webhook URL to POST to. The
+      # payload format below uses the Adaptive Card schema, which
+      # the Workflows webhook expects.
+      #
+      # Two separate notification steps: one for success, one for
+      # conflict. Only one of the two will ever fire per run, since
+      # each checks the opposite merge result.
       # ============================================================
+      - name: Notify Teams on success
+        if: always() && steps.do_merge.outputs.status == 'success'
+        run: |
+          curl -H "Content-Type: application/json" -d '{
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "text": "✅ Auto-merge succeeded",
+                      "weight": "bolder",
+                      "size": "medium",
+                      "color": "good"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} → main",
+                      "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "No conflicts. main is up to date with the latest release branch.",
+                      "wrap": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
+
       - name: Notify Teams on conflict
         if: always() && steps.do_merge.outputs.status == 'conflict'
         run: |
