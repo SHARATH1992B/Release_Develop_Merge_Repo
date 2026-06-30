@@ -92,17 +92,20 @@ jobs:
       # ============================================================
       - name: Create PR and request review
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
+        id: create_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.release_branch.outputs.branch }}
           REVIEWERS: "SHARATH1992B"
         run: |
-          gh pr create \
+          PR_URL=$(gh pr create \
             --base main \
             --head "$BRANCH" \
             --title "Automated merge: $BRANCH -> main" \
             --body "Auto-generated daily PR to merge the active release branch into main. Requires approval before merge." \
-            --reviewer "$REVIEWERS"
+            --reviewer "$REVIEWERS")
+          echo "PR created: $PR_URL"
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
       - name: Report result
         if: always()
@@ -110,3 +113,88 @@ jobs:
           echo "Branch detected: ${{ steps.release_branch.outputs.branch }}"
           echo "Diff needed: ${{ steps.diff_check.outputs.needed }}"
           echo "PR already existed: ${{ steps.pr_check.outputs.exists }}"
+
+      # ============================================================
+      # TEAMS NOTIFICATION
+      #
+      # Fires only when a new PR was actually created this run.
+      # Uses the same Adaptive Card format and Workflows webhook
+      # approach validated in the earlier auto-merge POC.
+      # ============================================================
+      - name: Notify Teams that a PR was opened
+        if: steps.create_pr.outcome == 'success'
+        run: |
+          curl -H "Content-Type: application/json" -d '{
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "text": "\ud83d\udd14 New PR awaiting review",
+                      "weight": "bolder",
+                      "size": "medium",
+                      "color": "accent"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} \u2192 main",
+                      "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Review requested. Merge is blocked until required approvals are met.",
+                      "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "${{ steps.create_pr.outputs.pr_url }}",
+                      "wrap": true,
+                      "color": "accent"
+                    }
+                  ]
+                }
+              }
+            ]
+          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
+
+      - name: Notify Teams when nothing to merge
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
+        run: |
+          curl -H "Content-Type: application/json" -d '{
+            "type": "message",
+            "attachments": [
+              {
+                "contentType": "application/vnd.microsoft.card.adaptive",
+                "content": {
+                  "type": "AdaptiveCard",
+                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+                  "version": "1.4",
+                  "body": [
+                    {
+                      "type": "TextBlock",
+                      "text": "\u2705 Nothing to merge",
+                      "weight": "bolder",
+                      "size": "medium",
+                      "color": "good"
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} \u2192 main",
+                      "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "main is already up to date. No PR needed today.",
+                      "wrap": true
+                    }
+                  ]
+                }
+              }
+            ]
+          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
