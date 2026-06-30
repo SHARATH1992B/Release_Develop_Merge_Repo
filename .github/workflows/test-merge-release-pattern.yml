@@ -15,11 +15,6 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      # ============================================================
-      # BRANCH DETECTION (same logic validated in the earlier POC)
-      # Matches release/<anything>-<4-digit year>  e.g. release/1.1.0-2026
-      # The leading-whitespace fix from before is included here too.
-      # ============================================================
       - name: Identify release branch
         id: release_branch
         run: |
@@ -40,12 +35,6 @@ jobs:
             echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           fi
 
-      # ============================================================
-      # CHECK: is there actually anything new to merge?
-      # Avoids opening a pointless PR if develop/main is already
-      # up to date with the release branch (e.g. nothing changed
-      # since yesterday's run).
-      # ============================================================
       - name: Check for existing diff
         if: steps.release_branch.outputs.found == 'true'
         id: diff_check
@@ -59,11 +48,6 @@ jobs:
             echo "needed=true" >> $GITHUB_OUTPUT
           fi
 
-      # ============================================================
-      # CHECK: is there already an OPEN PR for this branch?
-      # Avoids spamming a new PR every single day if yesterday's
-      # PR is still sitting there waiting for approval.
-      # ============================================================
       - name: Check for existing open PR
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
         id: pr_check
@@ -79,13 +63,6 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      # ============================================================
-      # CREATE THE PR + REQUEST REVIEW
-      #
-      # TEST PHASE: reviewer is just you (SHARATH1992B) for now.
-      # Once validated, change REVIEWERS below to the 2 real team
-      # lead GitHub usernames, comma-separated, no spaces.
-      # ============================================================
       - name: Create PR and request review
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
         id: create_pr
@@ -110,13 +87,6 @@ jobs:
           echo "Diff needed: ${{ steps.diff_check.outputs.needed }}"
           echo "PR already existed: ${{ steps.pr_check.outputs.exists }}"
 
-      # ============================================================
-      # TEAMS NOTIFICATION
-      #
-      # Fires only when a new PR was actually created this run.
-      # Uses the same Adaptive Card format and Workflows webhook
-      # approach validated in the earlier auto-merge POC.
-      # ============================================================
       - name: Notify Teams that a PR was opened
         if: steps.create_pr.outcome == 'success'
         run: |
