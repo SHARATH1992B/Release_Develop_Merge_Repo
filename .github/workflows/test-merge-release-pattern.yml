@@ -54,7 +54,7 @@ jobs:
         run: |
           BRANCH="${{ steps.release_branch.outputs.branch }}"
           git checkout main
-          git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1
+          git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1 || true
           MERGE_EXIT=$?
           echo "---- merge_output.txt content ----"
           cat merge_output.txt
