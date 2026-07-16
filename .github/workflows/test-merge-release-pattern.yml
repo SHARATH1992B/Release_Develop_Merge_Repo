@@ -109,6 +109,18 @@ jobs:
       - name: Notify Teams that a PR was opened
         if: steps.create_pr.outcome == 'success'
         run: |
+          if [ "${{ steps.conflict_check.outputs.has_conflicts }}" == "true" ]; then
+            TITLE="⚠️ New PR awaiting review — Merge conflicts detected"
+            TITLE_COLOR="attention"
+            STATUS_TEXT="This PR has merge conflicts that must be resolved manually before it can be merged."
+            CONFLICT_TEXT="Conflicting files: ${{ steps.conflict_check.outputs.conflict_files }}"
+          else
+            TITLE="🔔 New PR awaiting review"
+            TITLE_COLOR="accent"
+            STATUS_TEXT="Review requested. Merge is blocked until required approvals are met."
+            CONFLICT_TEXT="No merge conflicts detected."
+          fi
+
           curl -H "Content-Type: application/json" -d '{
             "type": "message",
             "attachments": [
@@ -121,20 +133,26 @@ jobs:
                   "body": [
                     {
                       "type": "TextBlock",
-                      "text": "\ud83d\udd14 New PR awaiting review",
+                      "text": "'"$TITLE"'",
                       "weight": "bolder",
                       "size": "medium",
-                      "color": "accent"
+                      "color": "'"$TITLE_COLOR"'"
                     },
                     {
                       "type": "TextBlock",
-                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} \u2192 main",
+                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} → main",
                       "wrap": true
                     },
                     {
                       "type": "TextBlock",
-                      "text": "Review requested. Merge is blocked until required approvals are met.",
+                      "text": "'"$STATUS_TEXT"'",
                       "wrap": true
+                    },
+                    {
+                      "type": "TextBlock",
+                      "text": "'"$CONFLICT_TEXT"'",
+                      "wrap": true,
+                      "color": "warning"
                     },
                     {
                       "type": "TextBlock",
@@ -184,49 +202,4 @@ jobs:
             ]
           }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
 
-      - name: Notify Teams of merge conflicts
-        if: steps.conflict_check.outputs.has_conflicts == 'true'
-        run: |
-          curl -H "Content-Type: application/json" -d '{
-            "type": "message",
-            "attachments": [
-              {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                  "type": "AdaptiveCard",
-                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                  "version": "1.4",
-                  "body": [
-                    {
-                      "type": "TextBlock",
-                      "text": "\u26a0\ufe0f Merge conflicts detected",
-                      "weight": "bolder",
-                      "size": "medium",
-                      "color": "attention"
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} \u2192 main",
-                      "wrap": true
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "Conflicting files: ${{ steps.conflict_check.outputs.conflict_files }}",
-                      "wrap": true
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "PR was still created, but manual conflict resolution is required before merge.",
-                      "wrap": true
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "${{ steps.create_pr.outputs.pr_url }}",
-                      "wrap": true,
-                      "color": "accent"
-                    }
-                  ]
-                }
-              }
-            ]
-          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
+        
