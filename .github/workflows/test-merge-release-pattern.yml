@@ -47,7 +47,7 @@ jobs:
           else
             echo "needed=true" >> $GITHUB_OUTPUT
           fi
-          
+
       - name: Check for merge conflicts
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
         id: conflict_check
@@ -61,6 +61,9 @@ jobs:
           git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1
           MERGE_EXIT=$?
           set -e
+          echo "---- merge_output.txt content ----"
+          cat merge_output.txt
+          echo "---- merge exit code: $MERGE_EXIT ----"
 
           if git diff --name-only --diff-filter=U | grep -q .; then
             echo "has_conflicts=true" >> $GITHUB_OUTPUT
@@ -71,17 +74,10 @@ jobs:
 
             DETAILS=""
             while IFS= read -r FILE; do
-              DETAILS+="📄 File: $FILE"$'\n'
-
-              MARKERS=$(grep -n '^<<<<<<<\|^=======\|^>>>>>>>' "$FILE" 2>/dev/null || echo "  (markers not found)")
-              DETAILS+="Conflict lines:"$'\n'"$MARKERS"$'\n'
-
-              MAIN_LOG=$(git log -1 --format='%an | %h | %s' main -- "$FILE" 2>/dev/null || echo "no history")
-              DETAILS+="Last change on main: $MAIN_LOG"$'\n'
-
-              REL_LOG=$(git log -1 --format='%an | %h | %s' "origin/$BRANCH" -- "$FILE" 2>/dev/null || echo "no history")
-              DETAILS+="Last change on $BRANCH: $REL_LOG"$'\n'
-              DETAILS+="-------------------"$'\n'
+              LINES=$(grep -n '^<<<<<<<\|^=======\|^>>>>>>>' "$FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')
+              MAIN_LOG=$(git log -1 --format='%an (%h)' main -- "$FILE" 2>/dev/null || echo "no history")
+              REL_LOG=$(git log -1 --format='%an (%h)' "origin/$BRANCH" -- "$FILE" 2>/dev/null || echo "no history")
+              DETAILS+="${FILE} | lines: ${LINES} | main: ${MAIN_LOG} | ${BRANCH}: ${REL_LOG}"$'\n'
             done <<< "$CONFLICT_FILES"
 
             echo "conflict_details<<EOF" >> $GITHUB_OUTPUT
@@ -134,12 +130,16 @@ jobs:
 
       - name: Notify Teams that a PR was opened
         if: steps.create_pr.outcome == 'success'
+        env:
+          CONFLICT_DETAILS: ${{ steps.conflict_check.outputs.conflict_details }}
+          PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
+          PR_URL: ${{ steps.create_pr.outputs.pr_url }}
         run: |
           if [ "${{ steps.conflict_check.outputs.has_conflicts }}" == "true" ]; then
             TITLE="⚠️ New PR awaiting review — Merge conflicts detected"
             COLOR="attention"
             STATUS="This PR has merge conflicts that must be resolved manually before it can be merged."
-            DETAILS="${{ steps.conflict_check.outputs.conflict_details }}"
+            DETAILS="$CONFLICT_DETAILS"
           else
             TITLE="🔔 New PR awaiting review"
             COLOR="accent"
@@ -150,10 +150,10 @@ jobs:
           PAYLOAD=$(jq -n \
             --arg title "$TITLE" \
             --arg color "$COLOR" \
-            --arg branch "${{ steps.release_branch.outputs.branch }}" \
+            --arg branch "$PR_BRANCH" \
             --arg status "$STATUS" \
             --arg details "$DETAILS" \
-            --arg url "${{ steps.create_pr.outputs.pr_url }}" \
+            --arg url "$PR_URL" \
             '{
               type: "message",
               attachments: [{
@@ -163,15 +163,18 @@ jobs:
                   "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                   version: "1.4",
                   body: [
-                    { type: "TextBlock", text: $title, weight: "bolder", size: "medium", color: $color },
-                    { type: "TextBlock", text: ("Branch: " + $branch + " → main"), wrap: true },
-                    { type: "TextBlock", text: $status, wrap: true },
-                    { type: "TextBlock", text: $details, wrap: true, fontType: "monospace", size: "small", isSubtle: true },
-                    { type: "TextBlock", text: $url, wrap: true, color: "accent" }
+                    { type: "TextBlock", text: $title, weight: "bolder", size: "Medium", color: $color, wrap: true },
+                    { type: "TextBlock", text: ("Branch: " + $branch + " → main"), wrap: true, size: "Small" },
+                    { type: "TextBlock", text: $status, wrap: true, size: "Small" },
+                    { type: "TextBlock", text: $details, wrap: true, size: "Small", isSubtle: true, fontType: "Monospace" },
+                    { type: "TextBlock", text: $url, wrap: true, color: "accent", size: "Small" }
                   ]
                 }
               }]
             }')
+
+          echo "---- Payload sent to Teams ----"
+          echo "$PAYLOAD"
 
           curl -H "Content-Type: application/json" -d "$PAYLOAD" "${{ secrets.TEAMS_WEBHOOK_URL }}"
 
@@ -192,7 +195,7 @@ jobs:
                       "type": "TextBlock",
                       "text": "\u2705 Nothing to merge",
                       "weight": "bolder",
-                      "size": "medium",
+                      "size": "Medium",
                       "color": "good"
                     },
                     {
