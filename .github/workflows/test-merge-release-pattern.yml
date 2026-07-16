@@ -84,9 +84,13 @@ jobs:
               DETAILS+="-------------------"$'\n'
             done <<< "$CONFLICT_FILES"
 
-            echo "conflict_details<<EOF" >> $GITHUB_OUTPUT
-            echo "$DETAILS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "---- Raw conflict details (before encoding) ----"
+            echo "$DETAILS"
+
+            # Base64-encode to safely pass this multiline, quote-containing text
+            # through GITHUB_OUTPUT and between steps without any escaping issues.
+            DETAILS_B64=$(echo "$DETAILS" | base64 -w 0)
+            echo "conflict_details_b64=$DETAILS_B64" >> $GITHUB_OUTPUT
           else
             echo "has_conflicts=false" >> $GITHUB_OUTPUT
           fi
@@ -135,7 +139,7 @@ jobs:
       - name: Notify Teams that a PR was opened
         if: steps.create_pr.outcome == 'success'
         env:
-          CONFLICT_DETAILS: ${{ steps.conflict_check.outputs.conflict_details }}
+          CONFLICT_DETAILS_B64: ${{ steps.conflict_check.outputs.conflict_details_b64 }}
           PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
           PR_URL: ${{ steps.create_pr.outputs.pr_url }}
         run: |
@@ -143,13 +147,16 @@ jobs:
             TITLE="⚠️ New PR awaiting review — Merge conflicts detected"
             COLOR="attention"
             STATUS="This PR has merge conflicts that must be resolved manually before it can be merged."
-            DETAILS="$CONFLICT_DETAILS"
+            DETAILS=$(echo "$CONFLICT_DETAILS_B64" | base64 -d)
           else
             TITLE="🔔 New PR awaiting review"
             COLOR="accent"
             STATUS="Review requested. Merge is blocked until required approvals are met."
             DETAILS="No merge conflicts detected."
           fi
+
+          echo "---- Decoded details being sent ----"
+          echo "$DETAILS"
 
           PAYLOAD=$(jq -n \
             --arg title "$TITLE" \
