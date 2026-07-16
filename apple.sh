@@ -1,2 +1,2 @@
 #!bin/bash/
-echo "Version from MAIN branch and"
+echo "Version from MAIN branch and change B"
