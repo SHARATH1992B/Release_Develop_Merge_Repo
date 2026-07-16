@@ -52,10 +52,15 @@ jobs:
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
         id: conflict_check
         run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+
           BRANCH="${{ steps.release_branch.outputs.branch }}"
           git checkout main
-          git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1 || true
+          set +e
+          git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1
           MERGE_EXIT=$?
+          set -e
           echo "---- merge_output.txt content ----"
           cat merge_output.txt
           echo "---- merge exit code: $MERGE_EXIT ----"
