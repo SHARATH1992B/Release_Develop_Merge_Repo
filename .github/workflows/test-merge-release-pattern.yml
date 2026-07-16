@@ -56,7 +56,6 @@ jobs:
           git config user.name "github-actions[bot]"
 
           BRANCH="${{ steps.release_branch.outputs.branch }}"
-          git checkout main
           set +e
           git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1
           MERGE_EXIT=$?
@@ -74,10 +73,15 @@ jobs:
 
             DETAILS=""
             while IFS= read -r FILE; do
-              LINES=$(grep -n '^<<<<<<<\|^=======\|^>>>>>>>' "$FILE" 2>/dev/null | cut -d: -f1 | tr '\n' ',' | sed 's/,$//')
+              OURS=$(sed -n '/^<<<<<<</,/^=======/p' "$FILE" | sed '1d;$d')
+              THEIRS=$(sed -n '/^=======/,/^>>>>>>>/p' "$FILE" | sed '1d;$d')
               MAIN_LOG=$(git log -1 --format='%an (%h)' main -- "$FILE" 2>/dev/null || echo "no history")
               REL_LOG=$(git log -1 --format='%an (%h)' "origin/$BRANCH" -- "$FILE" 2>/dev/null || echo "no history")
-              DETAILS+="${FILE} | lines: ${LINES} | main: ${MAIN_LOG} | ${BRANCH}: ${REL_LOG}"$'\n'
+
+              DETAILS+="File: ${FILE}"$'\n'
+              DETAILS+="  main [${MAIN_LOG}]: ${OURS}"$'\n'
+              DETAILS+="  ${BRANCH} [${REL_LOG}]: ${THEIRS}"$'\n'
+              DETAILS+="-------------------"$'\n'
             done <<< "$CONFLICT_FILES"
 
             echo "conflict_details<<EOF" >> $GITHUB_OUTPUT
