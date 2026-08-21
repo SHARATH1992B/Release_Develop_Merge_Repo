@@ -136,91 +136,80 @@ jobs:
           echo "Diff needed: ${{ steps.diff_check.outputs.needed }}"
           echo "PR already existed: ${{ steps.pr_check.outputs.exists }}"
 
-      - name: Notify Teams that a PR was opened
+      - name: Build report body (PR opened)
         if: steps.create_pr.outcome == 'success'
+        id: report_pr_opened
         env:
           CONFLICT_DETAILS_B64: ${{ steps.conflict_check.outputs.conflict_details_b64 }}
           PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
           PR_URL: ${{ steps.create_pr.outputs.pr_url }}
+          HAS_CONFLICTS: ${{ steps.conflict_check.outputs.has_conflicts }}
         run: |
-          if [ "${{ steps.conflict_check.outputs.has_conflicts }}" == "true" ]; then
-            TITLE="⚠️ New PR awaiting review — Merge conflicts detected"
-            COLOR="attention"
-            STATUS="This PR has merge conflicts that must be resolved manually before it can be merged."
-            DETAILS=$(echo "$CONFLICT_DETAILS_B64" | base64 -d)
+          {
+            echo "REPORT_BODY<<EOF"
+            echo "Release-to-main PR Report"
+            echo "=========================="
+            echo ""
+            echo "Branch: $PR_BRANCH -> main"
+            echo "PR URL: $PR_URL"
+            echo ""
+            if [ "$HAS_CONFLICTS" == "true" ]; then
+              echo "Status: Merge conflicts detected. Manual resolution required before merge."
+              echo ""
+              echo "Conflict details:"
+              echo "$CONFLICT_DETAILS_B64" | base64 -d
+            else
+              echo "Status: No merge conflicts detected. Review requested; merge is blocked until required approvals are met."
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "$HAS_CONFLICTS" == "true" ]; then
+            echo "subject=[Release PR] Merge conflicts detected - $PR_BRANCH -> main" >> "$GITHUB_OUTPUT"
           else
-            TITLE="🔔 New PR awaiting review"
-            COLOR="accent"
-            STATUS="Review requested. Merge is blocked until required approvals are met."
-            DETAILS="No merge conflicts detected."
+            echo "subject=[Release PR] Review requested - $PR_BRANCH -> main" >> "$GITHUB_OUTPUT"
           fi
 
-          echo "---- Decoded details being sent ----"
-          echo "$DETAILS"
+      - name: Email report (PR opened)
+        if: steps.create_pr.outcome == 'success'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: ${{ steps.report_pr_opened.outputs.subject }}
+          to: ssharathb0629@gmail.com
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: ${{ steps.report_pr_opened.outputs.REPORT_BODY }}
 
-          PAYLOAD=$(jq -n \
-            --arg title "$TITLE" \
-            --arg color "$COLOR" \
-            --arg branch "$PR_BRANCH" \
-            --arg status "$STATUS" \
-            --arg details "$DETAILS" \
-            --arg url "$PR_URL" \
-            '{
-              type: "message",
-              attachments: [{
-                contentType: "application/vnd.microsoft.card.adaptive",
-                content: {
-                  type: "AdaptiveCard",
-                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                  version: "1.4",
-                  body: [
-                    { type: "TextBlock", text: $title, weight: "bolder", size: "Medium", color: $color, wrap: true },
-                    { type: "TextBlock", text: ("Branch: " + $branch + " → main"), wrap: true, size: "Small" },
-                    { type: "TextBlock", text: $status, wrap: true, size: "Small" },
-                    { type: "TextBlock", text: $details, wrap: true, size: "Small", isSubtle: true, fontType: "Monospace" },
-                    { type: "TextBlock", text: $url, wrap: true, color: "accent", size: "Small" }
-                  ]
-                }
-              }]
-            }')
-
-          echo "---- Payload sent to Teams ----"
-          echo "$PAYLOAD"
-
-          curl -H "Content-Type: application/json" -d "$PAYLOAD" "${{ secrets.TEAMS_WEBHOOK_URL }}"
-
-      - name: Notify Teams when nothing to merge
+      - name: Build report body (nothing to merge)
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
+        id: report_nothing_to_merge
+        env:
+          PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
         run: |
-          curl -H "Content-Type: application/json" -d '{
-            "type": "message",
-            "attachments": [
-              {
-                "contentType": "application/vnd.microsoft.card.adaptive",
-                "content": {
-                  "type": "AdaptiveCard",
-                  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-                  "version": "1.4",
-                  "body": [
-                    {
-                      "type": "TextBlock",
-                      "text": "\u2705 Nothing to merge",
-                      "weight": "bolder",
-                      "size": "Medium",
-                      "color": "good"
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "Branch: ${{ steps.release_branch.outputs.branch }} \u2192 main",
-                      "wrap": true
-                    },
-                    {
-                      "type": "TextBlock",
-                      "text": "main is already up to date. No PR needed today.",
-                      "wrap": true
-                    }
-                  ]
-                }
-              }
-            ]
-          }' "${{ secrets.TEAMS_WEBHOOK_URL }}"
+          {
+            echo "REPORT_BODY<<EOF"
+            echo "Release-to-main PR Report"
+            echo "=========================="
+            echo ""
+            echo "Branch: $PR_BRANCH -> main"
+            echo "Status: main is already up to date. No PR needed today."
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Email report (nothing to merge)
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Release PR] Nothing to merge - ${{ steps.release_branch.outputs.branch }} -> main"
+          to: ssharathb0629@gmail.com
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: ${{ steps.report_nothing_to_merge.outputs.REPORT_BODY }}
