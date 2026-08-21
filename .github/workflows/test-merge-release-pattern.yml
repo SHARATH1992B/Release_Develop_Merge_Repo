@@ -180,7 +180,7 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: ${{ steps.report_pr_opened.outputs.subject }}
-          to: ssharathb0629@gmail.com
+          to: ssharathb76767@gmail.com
           from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
           body: ${{ steps.report_pr_opened.outputs.REPORT_BODY }}
 
@@ -210,6 +210,6 @@ jobs:
           username: ${{ secrets.MAIL_USERNAME }}
           password: ${{ secrets.MAIL_PASSWORD }}
           subject: "[Release PR] Nothing to merge - ${{ steps.release_branch.outputs.branch }} -> main"
-          to: ssharathb0629@gmail.com
+          to: ssharathb76767@gmail.com
           from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
           body: ${{ steps.report_nothing_to_merge.outputs.REPORT_BODY }}
