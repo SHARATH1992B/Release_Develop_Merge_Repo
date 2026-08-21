@@ -136,7 +136,7 @@ jobs:
           echo "Diff needed: ${{ steps.diff_check.outputs.needed }}"
           echo "PR already existed: ${{ steps.pr_check.outputs.exists }}"
 
-      - name: Build report body (PR opened)
+      - name: Build report file (PR opened)
         if: steps.create_pr.outcome == 'success'
         id: report_pr_opened
         env:
@@ -145,8 +145,8 @@ jobs:
           PR_URL: ${{ steps.create_pr.outputs.pr_url }}
           HAS_CONFLICTS: ${{ steps.conflict_check.outputs.has_conflicts }}
         run: |
+          REPORT_FILE="release-pr-report.txt"
           {
-            echo "REPORT_BODY<<EOF"
             echo "Release-to-main PR Report"
             echo "=========================="
             echo ""
@@ -161,8 +161,9 @@ jobs:
             else
               echo "Status: No merge conflicts detected. Review requested; merge is blocked until required approvals are met."
             fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          } > "$REPORT_FILE"
+
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
           if [ "$HAS_CONFLICTS" == "true" ]; then
             echo "subject=[Release PR] Merge conflicts detected - $PR_BRANCH -> main" >> "$GITHUB_OUTPUT"
@@ -182,23 +183,25 @@ jobs:
           subject: ${{ steps.report_pr_opened.outputs.subject }}
           to: ssharathb76767@gmail.com
           from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
-          body: ${{ steps.report_pr_opened.outputs.REPORT_BODY }}
+          body: "Please find the attached report."
+          attachments: ${{ steps.report_pr_opened.outputs.report_file }}
 
-      - name: Build report body (nothing to merge)
+      - name: Build report file (nothing to merge)
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
         id: report_nothing_to_merge
         env:
           PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
         run: |
+          REPORT_FILE="release-pr-report.txt"
           {
-            echo "REPORT_BODY<<EOF"
             echo "Release-to-main PR Report"
             echo "=========================="
             echo ""
             echo "Branch: $PR_BRANCH -> main"
             echo "Status: main is already up to date. No PR needed today."
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          } > "$REPORT_FILE"
+
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Email report (nothing to merge)
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
@@ -212,4 +215,5 @@ jobs:
           subject: "[Release PR] Nothing to merge - ${{ steps.release_branch.outputs.branch }} -> main"
           to: ssharathb76767@gmail.com
           from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
-          body: ${{ steps.report_nothing_to_merge.outputs.REPORT_BODY }}
+          body: "Please find the attached report."
+          attachments: ${{ steps.report_nothing_to_merge.outputs.report_file }}
