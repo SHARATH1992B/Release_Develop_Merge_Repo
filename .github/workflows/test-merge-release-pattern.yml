@@ -112,6 +112,17 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Ensure release-sync label exists
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --force updates the label if it already exists, so this is safe to run every time
+          gh label create "release-sync" \
+            --color "000000" \
+            --description "Auto-generated PR merging a release branch into main" \
+            --force
+
       - name: Create PR and request review
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
         id: create_pr
@@ -123,8 +134,9 @@ jobs:
           PR_URL=$(gh pr create \
             --base main \
             --head "$BRANCH" \
-            --title "Automated merge: $BRANCH -> main" \
+            --title "[Release Sync] $BRANCH -> main" \
             --body "Auto-generated daily PR to merge the active release branch into main. Requires approval before merge." \
+            --label "release-sync" \
             --reviewer "$REVIEWERS")
           echo "PR created: $PR_URL"
           echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
