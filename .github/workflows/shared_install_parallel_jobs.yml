@@ -1,0 +1,89 @@
+name: POC - Shared Install (single file, two parallel jobs)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  # This job installs dependencies exactly once and saves them to a cache.
+  # Both jobs below wait for this one to finish before they start.
+  install_deps:
+    name: Install dependencies once
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Restore or save npm dependencies cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies (only runs on cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "No cache found - installing dependencies from scratch."
+          time npm ci
+
+  # Stands in for the real "Sonar" job. It does NOT install anything itself -
+  # it only restores what install_deps already cached.
+  sonar_like:
+    name: SonarLike
+    needs: install_deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Restore cached dependencies
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+
+      - name: Confirm dependencies were restored, not reinstalled
+        run: |
+          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
+          du -sh node_modules
+
+      - name: Simulate Sonar-style analysis step
+        run: echo "Running Sonar-like analysis using the already-installed dependencies..."
+
+  # Stands in for the real "Unit Tests" job. Same idea - restores the cache,
+  # does not install anything itself.
+  unittests_like:
+    name: UnitTestsLike
+    needs: install_deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Restore cached dependencies
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+
+      - name: Confirm dependencies were restored, not reinstalled
+        run: |
+          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
+          du -sh node_modules
+
+      - name: Simulate Unit Test-style step
+        run: echo "Running Unit Test-like checks using the already-installed dependencies..."
