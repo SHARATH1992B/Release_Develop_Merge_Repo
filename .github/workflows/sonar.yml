@@ -1,0 +1,40 @@
+name: POC - Workflow A (install and cache dependencies)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  install_and_cache:
+    name: Install npm dependencies and cache them
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # This step tries to restore a cache first. The "key" is built from the
+      # contents of package-lock.json - if that file hasn't changed since the
+      # last time a cache was saved with this key, the restore below succeeds.
+      - name: Restore npm dependencies cache (if one exists)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: npm-deps-${{ hashFiles('package-lock.json') }}
+
+      # This only runs if the cache above was NOT found (cache-hit is false).
+      # This simulates the very first run, or a run after package-lock.json changed.
+      - name: Install dependencies (only runs on cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "No cache found - installing dependencies from scratch."
+          time npm ci
+
+      - name: Show result
+        run: |
+          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
+          echo "node_modules folder size:"
+          du -sh node_modules

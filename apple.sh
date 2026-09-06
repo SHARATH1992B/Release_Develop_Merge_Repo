@@ -1,7 +1,2 @@
 #!bin/bash/
-hi kjbsdk.
-kfs.kvjn
-
-kjbsdkjkn
-svfv
-gnhng
+echo "Version from MAIN branch and change A"
