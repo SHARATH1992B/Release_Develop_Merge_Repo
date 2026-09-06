@@ -1,13 +1,16 @@
-name: POC - Shared Install (single file, two parallel jobs)
+name: CI Checks
 
 on:
-  workflow_dispatch: {}
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
 
 jobs:
   # This job installs dependencies exactly once and saves them to a cache.
   # Both jobs below wait for this one to finish before they start.
   install_deps:
-    name: Install dependencies once
+    name: Install Dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -33,7 +36,7 @@ jobs:
   # Stands in for the real "Sonar" job. It does NOT install anything itself -
   # it only restores what install_deps already cached.
   sonar_like:
-    name: SonarLike
+    name: SonarCloud
     needs: install_deps
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +65,7 @@ jobs:
   # Stands in for the real "Unit Tests" job. Same idea - restores the cache,
   # does not install anything itself.
   unittests_like:
-    name: UnitTestsLike
+    name: UnitTests
     needs: install_deps
     runs-on: ubuntu-latest
     steps:
