@@ -62,12 +62,15 @@ jobs:
       - name: Simulate Sonar-style analysis step
         run: echo "Running Sonar-like analysis using the already-installed dependencies..."
 
-  # Stands in for the real "Unit Tests" job. Same idea - restores the cache,
-  # does not install anything itself.
+  # Stands in for the real "Unit Tests" job. Restores the cache (no reinstall),
+  # then actually runs the tests and publishes an itemized result report.
   unittests_like:
     name: UnitTests
     needs: install_deps
     runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
 
@@ -88,5 +91,14 @@ jobs:
           echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
           du -sh node_modules
 
-      - name: Simulate Unit Test-style step
-        run: echo "Running Unit Test-like checks using the already-installed dependencies..."
+      # This may exit non-zero if a test fails - that's expected and correct.
+      - name: Run tests (JUnit output)
+        run: npm run test:ci
+
+      # if: always() ensures this still runs even if the step above failed,
+      # so the itemized report shows up on the PR either way.
+      - name: Publish Test Results
+        uses: mikepenz/action-junit-report@v4
+        if: always()
+        with:
+          report_paths: 'test-results/junit.xml'
