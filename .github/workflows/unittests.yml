@@ -15,10 +15,6 @@ jobs:
         with:
           node-version: 18
 
-      # Same "path" and same "key" pattern as Workflow A. Because the cache is
-      # stored at the repo level (not per-workflow-file), this step can restore
-      # the exact same node_modules that Workflow A saved earlier - as long as
-      # package-lock.json is unchanged.
       - name: Restore npm dependencies cache
         id: cache
         uses: actions/cache@v4
@@ -26,8 +22,6 @@ jobs:
           path: node_modules
           key: npm-deps-${{ hashFiles('package-lock.json') }}
 
-      # This should be skipped entirely if Workflow A already ran and cached
-      # successfully - that's the whole point of this POC.
       - name: Install dependencies (only runs on cache miss)
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
