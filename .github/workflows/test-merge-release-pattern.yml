@@ -1,4 +1,4 @@
-name: Auto-merge release branch to develop (TEST)
+name: Auto-create release-to-develop PR
 
 on:
   workflow_dispatch: {}
@@ -6,8 +6,8 @@ on:
     - cron: '0 23 * * *'
 
 jobs:
-  merge:
-    name: Detect release branch and merge into develop
+  create_pr:
+    name: Detect release branch and open PR to develop
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -15,22 +15,6 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Configure git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      # ============================================================
-      # BRANCH DETECTION
-      # Matches release/<anything>-<4-digit year>  e.g. release/1.1.0-2026
-      #
-      # FIX: `git branch -r` pads every line with leading whitespace
-      # (e.g. "  origin/release/1.1.0-2026"). The earlier version only
-      # stripped the "origin/" prefix and left the leading spaces in
-      # place, so the ^release/ anchor in grep never matched anything.
-      # The extra `sed 's/^[[:space:]]*//'` below trims that whitespace
-      # before the pattern check runs.
-      # ============================================================
       - name: Identify release branch
         id: release_branch
         run: |
@@ -43,7 +27,7 @@ jobs:
             | tail -n1 \
             | xargs)
           if [ -z "$BRANCH" ]; then
-            echo "No branch matching release/*-YYYY found. Skipping merge."
+            echo "No branch matching release/*-YYYY found. Skipping."
             echo "found=false" >> $GITHUB_OUTPUT
           else
             echo "Detected release branch: $BRANCH"
@@ -51,25 +35,197 @@ jobs:
             echo "branch=$BRANCH" >> $GITHUB_OUTPUT
           fi
 
-      - name: Attempt merge
+      - name: Check for existing diff
         if: steps.release_branch.outputs.found == 'true'
-        id: do_merge
+        id: diff_check
         run: |
           BRANCH="${{ steps.release_branch.outputs.branch }}"
-          if git merge --no-ff "origin/$BRANCH" -m "Automated merge: $BRANCH -> main"; then
-            git push origin main
-            echo "status=success" >> $GITHUB_OUTPUT
+          AHEAD=$(git rev-list --count main.."origin/$BRANCH")
+          echo "Commits in $BRANCH not yet in main: $AHEAD"
+          if [ "$AHEAD" -eq "0" ]; then
+            echo "needed=false" >> $GITHUB_OUTPUT
           else
-            git merge --abort
-            echo "status=conflict" >> $GITHUB_OUTPUT
+            echo "needed=true" >> $GITHUB_OUTPUT
           fi
+
+      - name: Check for merge conflicts
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
+        id: conflict_check
+        run: |
+          git config user.email "actions@github.com"
+          git config user.name "github-actions[bot]"
+
+          BRANCH="${{ steps.release_branch.outputs.branch }}"
+          set +e
+          git merge --no-commit --no-ff "origin/$BRANCH" > merge_output.txt 2>&1
+          MERGE_EXIT=$?
+          set -e
+          echo "---- merge_output.txt content ----"
+          cat merge_output.txt
+          echo "---- merge exit code: $MERGE_EXIT ----"
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "has_conflicts=true" >> $GITHUB_OUTPUT
+
+            CONFLICT_FILES=$(git diff --name-only --diff-filter=U)
+            CONFLICT_FILES_CSV=$(echo "$CONFLICT_FILES" | tr '\n' ',' | sed 's/,$//')
+            echo "conflict_files=$CONFLICT_FILES_CSV" >> $GITHUB_OUTPUT
+
+            DETAILS=""
+            while IFS= read -r FILE; do
+              OURS=$(sed -n '/^<<<<<<</,/^=======/p' "$FILE" | sed '1d;$d')
+              THEIRS=$(sed -n '/^=======/,/^>>>>>>>/p' "$FILE" | sed '1d;$d')
+              MAIN_LOG=$(git log -1 --format='%an (%h)' main -- "$FILE" 2>/dev/null || echo "no history")
+              REL_LOG=$(git log -1 --format='%an (%h)' "origin/$BRANCH" -- "$FILE" 2>/dev/null || echo "no history")
+
+              DETAILS+="File: ${FILE}"$'\n'
+              DETAILS+="  main [${MAIN_LOG}]: ${OURS}"$'\n'
+              DETAILS+="  ${BRANCH} [${REL_LOG}]: ${THEIRS}"$'\n'
+              DETAILS+="-------------------"$'\n'
+            done <<< "$CONFLICT_FILES"
+
+            echo "---- Raw conflict details (before encoding) ----"
+            echo "$DETAILS"
+
+            # Base64-encode to safely pass this multiline, quote-containing text
+            # through GITHUB_OUTPUT and between steps without any escaping issues.
+            DETAILS_B64=$(echo "$DETAILS" | base64 -w 0)
+            echo "conflict_details_b64=$DETAILS_B64" >> $GITHUB_OUTPUT
+          else
+            echo "has_conflicts=false" >> $GITHUB_OUTPUT
+          fi
+
+          git merge --abort 2>/dev/null || true
+
+      - name: Check for existing open PR
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
+        id: pr_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BRANCH="${{ steps.release_branch.outputs.branch }}"
+          EXISTING=$(gh pr list --base main --head "$BRANCH" --state open --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            echo "Open PR already exists: #$EXISTING. Skipping creation."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Ensure release-sync label exists
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # --force updates the label if it already exists, so this is safe to run every time
+          gh label create "release-sync" \
+            --color "000000" \
+            --description "Auto-generated PR merging a release branch into main" \
+            --force
+
+      - name: Create PR and request review
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
+        id: create_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.release_branch.outputs.branch }}
+          REVIEWERS: "SHARATH1992B"
+        run: |
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "[Release Sync] $BRANCH -> main" \
+            --body "Auto-generated daily PR to merge the active release branch into main. Requires approval before merge." \
+            --label "release-sync" \
+            --reviewer "$REVIEWERS")
+          echo "PR created: $PR_URL"
+          echo "pr_url=$PR_URL" >> $GITHUB_OUTPUT
 
       - name: Report result
         if: always()
         run: |
           echo "Branch detected: ${{ steps.release_branch.outputs.branch }}"
-          echo "Merge result: ${{ steps.do_merge.outputs.status }}"
+          echo "Diff needed: ${{ steps.diff_check.outputs.needed }}"
+          echo "PR already existed: ${{ steps.pr_check.outputs.exists }}"
 
-      - name: Fail job if conflict occurred
-        if: steps.do_merge.outputs.status == 'conflict'
-        run: exit 1
+      - name: Build report file (PR opened)
+        if: steps.create_pr.outcome == 'success'
+        id: report_pr_opened
+        env:
+          CONFLICT_DETAILS_B64: ${{ steps.conflict_check.outputs.conflict_details_b64 }}
+          PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
+          PR_URL: ${{ steps.create_pr.outputs.pr_url }}
+          HAS_CONFLICTS: ${{ steps.conflict_check.outputs.has_conflicts }}
+        run: |
+          REPORT_FILE="release-pr-report.txt"
+          {
+            echo "Release-to-main PR Report"
+            echo "=========================="
+            echo ""
+            echo "Branch: $PR_BRANCH -> main"
+            echo "PR URL: $PR_URL"
+            echo ""
+            if [ "$HAS_CONFLICTS" == "true" ]; then
+              echo "Status: Merge conflicts detected. Manual resolution required before merge."
+              echo ""
+              echo "Conflict details:"
+              echo "$CONFLICT_DETAILS_B64" | base64 -d
+            else
+              echo "Status: No merge conflicts detected. Review requested; merge is blocked until required approvals are met."
+            fi
+          } > "$REPORT_FILE"
+
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+          if [ "$HAS_CONFLICTS" == "true" ]; then
+            echo "subject=[Release PR] Merge conflicts detected - $PR_BRANCH -> main" >> "$GITHUB_OUTPUT"
+          else
+            echo "subject=[Release PR] Review requested - $PR_BRANCH -> main" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Email report (PR opened)
+        if: steps.create_pr.outcome == 'success'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: ${{ steps.report_pr_opened.outputs.subject }}
+          to: ssharathb76767@gmail.com
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: "Please find the attached report."
+          attachments: ${{ steps.report_pr_opened.outputs.report_file }}
+
+      - name: Build report file (nothing to merge)
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
+        id: report_nothing_to_merge
+        env:
+          PR_BRANCH: ${{ steps.release_branch.outputs.branch }}
+        run: |
+          REPORT_FILE="release-pr-report.txt"
+          {
+            echo "Release-to-main PR Report"
+            echo "=========================="
+            echo ""
+            echo "Branch: $PR_BRANCH -> main"
+            echo "Status: main is already up to date. No PR needed today."
+          } > "$REPORT_FILE"
+
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: Email report (nothing to merge)
+        if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'false'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "[Release PR] Nothing to merge - ${{ steps.release_branch.outputs.branch }} -> main"
+          to: ssharathb76767@gmail.com
+          from: GitHub Actions <${{ secrets.MAIL_USERNAME }}>
+          body: "Please find the attached report."
+          attachments: ${{ steps.report_nothing_to_merge.outputs.report_file }}
