@@ -13,6 +13,7 @@ jobs:
     permissions:
       checks: write
       contents: read
+      actions: read
     steps:
       - name: Mark check as in progress
         uses: actions/github-script@v7
@@ -36,25 +37,24 @@ jobs:
         with:
           node-version: 18
 
-      - name: Restore cached dependencies
-        id: cache
-        uses: actions/cache@v4
+      - name: Download node_modules artifact from Install Dependencies run
+        uses: actions/download-artifact@v4
         with:
-          path: node_modules
-          key: npm-deps-${{ hashFiles('package-lock.json') }}
+          name: node-modules
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
 
       - name: Confirm dependencies were restored, not reinstalled
-        run: |
-          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
-          du -sh node_modules
+        run: du -sh node_modules
 
       # May exit non-zero if a test fails - that's expected and correct.
       - name: Run tests (JUnit output)
         id: run_tests
         run: npm run test:ci
 
-      # The "commit" input tells this action which commit to attach the
-      # detailed report to, since workflow_run doesn't provide that automatically.
       - name: Publish Test Results
         uses: mikepenz/action-junit-report@v4
         if: always()
