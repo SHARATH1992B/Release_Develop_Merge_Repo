@@ -1,9 +1,5 @@
 name: Sonar
 
-# Does NOT trigger on pull_request directly - it triggers automatically once
-# the "Install Dependencies" workflow finishes. This is what lets Sonar and
-# Unit Tests run in parallel with each other, right after install, while
-# staying in a completely separate file (per Hamza's requirement).
 on:
   workflow_run:
     workflows: ["Install Dependencies"]
@@ -12,17 +8,13 @@ on:
 jobs:
   sonar:
     name: SonarCloud
-    # Only proceed if Install Dependencies actually succeeded
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       checks: write
       contents: read
+      actions: read
     steps:
-      # workflow_run does NOT automatically create a PR check like
-      # pull_request-triggered workflows do. This step manually creates one,
-      # tied to the exact commit that triggered Install Dependencies, so it
-      # shows up on the PR just like it would with a normal pull_request trigger.
       - name: Mark check as in progress
         uses: actions/github-script@v7
         with:
@@ -35,8 +27,6 @@ jobs:
               status: 'in_progress'
             });
 
-      # Must explicitly checkout the commit that triggered the upstream run -
-      # workflow_run does not automatically check out the right commit.
       - name: Checkout the exact commit that triggered Install Dependencies
         uses: actions/checkout@v3
         with:
@@ -47,17 +37,21 @@ jobs:
         with:
           node-version: 18
 
-      - name: Restore cached dependencies
-        id: cache
-        uses: actions/cache@v4
+      # actions/cache is not reliable here because this job's ref context
+      # differs from the PR branch that Install Dependencies ran on. Instead,
+      # download the exact artifact that specific run produced, using its run ID.
+      - name: Download node_modules artifact from Install Dependencies run
+        uses: actions/download-artifact@v4
         with:
-          path: node_modules
-          key: npm-deps-${{ hashFiles('package-lock.json') }}
+          name: node-modules
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract node_modules
+        run: tar -xzf node_modules.tar.gz
 
       - name: Confirm dependencies were restored, not reinstalled
-        run: |
-          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
-          du -sh node_modules
+        run: du -sh node_modules
 
       - name: Simulate Sonar-style analysis step
         id: run_sonar
