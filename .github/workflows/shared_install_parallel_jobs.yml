@@ -1,4 +1,4 @@
-name: CI Checks
+name: Install Dependencies
 
 on:
   pull_request:
@@ -30,68 +30,3 @@ jobs:
         run: |
           echo "No cache found - installing dependencies from scratch."
           time npm ci
-
-
-  sonar_like:
-    name: SonarCloud
-    needs: install_deps
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Restore cached dependencies
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: npm-deps-${{ hashFiles('package-lock.json') }}
-
-      - name: Confirm dependencies were restored, not reinstalled
-        run: |
-          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
-          du -sh node_modules
-
-      - name: Simulate Sonar-style analysis step
-        run: echo "Running Sonar-like analysis using the already-installed dependencies..."
-
-
-  unittests_like:
-    name: UnitTests
-    needs: install_deps
-    runs-on: ubuntu-latest
-    permissions:
-      checks: write
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-
-      - name: Restore cached dependencies
-        id: cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: npm-deps-${{ hashFiles('package-lock.json') }}
-
-      - name: Confirm dependencies were restored, not reinstalled
-        run: |
-          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
-          du -sh node_modules
-
-      - name: Run tests (JUnit output)
-        run: npm run test:ci
-
-      - name: Publish Test Results
-        uses: mikepenz/action-junit-report@v4
-        if: always()
-        with:
-          report_paths: 'test-results/junit.xml'
