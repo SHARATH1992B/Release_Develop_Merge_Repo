@@ -104,7 +104,7 @@ jobs:
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true'
         id: pr_check
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           BRANCH="${{ steps.release_branch.outputs.branch }}"
           EXISTING=$(gh pr list --base main --head "$BRANCH" --state open --json number --jq '.[0].number')
@@ -118,7 +118,7 @@ jobs:
       - name: Ensure release-sync label exists
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           # --force updates the label if it already exists, so this is safe to run every time
           gh label create "release-sync" \
@@ -130,7 +130,7 @@ jobs:
         if: steps.release_branch.outputs.found == 'true' && steps.diff_check.outputs.needed == 'true' && steps.pr_check.outputs.exists == 'false'
         id: create_pr
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
           BRANCH: ${{ steps.release_branch.outputs.branch }}
           REVIEWERS: "SHARATH1992B"
         run: |
