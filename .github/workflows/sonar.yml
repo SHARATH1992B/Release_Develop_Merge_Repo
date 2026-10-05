@@ -37,9 +37,6 @@ jobs:
         with:
           node-version: 18
 
-      # actions/cache is not reliable here because this job's ref context
-      # differs from the PR branch that Install Dependencies ran on. Instead,
-      # download the exact artifact that specific run produced, using its run ID.
       - name: Download node_modules artifact from Install Dependencies run
         uses: actions/download-artifact@v4
         with:
