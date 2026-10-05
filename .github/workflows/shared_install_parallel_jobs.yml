@@ -31,11 +31,6 @@ jobs:
           echo "No cache found - installing dependencies from scratch."
           time npm ci
 
-      # Cache alone isn't reliable for handing off to workflow_run-triggered
-      # jobs (Sonar/UnitTests), because their ref context differs from this
-      # PR's branch, and cache restore is scoped by ref. An artifact is tied
-      # to this specific run ID instead, so it's reliably downloadable
-      # regardless of branch/ref context.
       - name: Package node_modules for downstream jobs
         run: tar -czf node_modules.tar.gz node_modules
 
