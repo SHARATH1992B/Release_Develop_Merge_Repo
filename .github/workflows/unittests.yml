@@ -50,7 +50,6 @@ jobs:
       - name: Confirm dependencies were restored, not reinstalled
         run: du -sh node_modules
 
-      # May exit non-zero if a test fails - that's expected and correct.
       - name: Run tests (JUnit output)
         id: run_tests
         run: npm run test:ci
