@@ -13,7 +13,6 @@ jobs:
     permissions:
       checks: write
       contents: read
-      actions: read
     steps:
       - name: Mark check as in progress
         uses: actions/github-script@v7
@@ -37,22 +36,35 @@ jobs:
         with:
           node-version: 18
 
-      - name: Download node_modules artifact from Install Dependencies run
-        uses: actions/download-artifact@v4
+      # github.event.workflow_run.id is the exact run ID of the Install
+      # Dependencies run that triggered this job - so this key always matches
+      # the one that run saved under, with no ambiguity from the lock file.
+      # Note: because this job runs via workflow_run, its branch context is
+      # the default branch, which can mean the cache saved under the PR's
+      # branch scope isn't visible here (a documented branch-scoping behavior
+      # of actions/cache). The fallback step below keeps this job reliable
+      # either way.
+      - name: Restore cached dependencies
+        id: cache
+        uses: actions/cache@v4
         with:
-          name: node-modules
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: node_modules
+          key: npm-deps-${{ github.event.workflow_run.id }}
 
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
+      - name: Install dependencies (only runs on cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache not visible here - installing dependencies as a fallback."
+          time npm ci
 
-      - name: Confirm dependencies were restored, not reinstalled
-        run: du -sh node_modules
+      - name: Confirm dependencies are present
+        run: |
+          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
+          du -sh node_modules
 
       - name: Simulate Sonar-style analysis step
         id: run_sonar
-        run: echo "Running Sonar-like analysis using the already-installed dependencies..."
+        run: echo "Running Sonar-like analysis using the available dependencies..."
 
       - name: Mark check as completed
         if: always()

@@ -13,7 +13,6 @@ jobs:
     permissions:
       checks: write
       contents: read
-      actions: read
     steps:
       - name: Mark check as in progress
         uses: actions/github-script@v7
@@ -37,18 +36,28 @@ jobs:
         with:
           node-version: 18
 
-      - name: Download node_modules artifact from Install Dependencies run
-        uses: actions/download-artifact@v4
+      # github.event.workflow_run.id is the exact run ID of the Install
+      # Dependencies run that triggered this job - matches what that run
+      # saved under. See note in sonar.yml - the cache may still not be
+      # visible here due to actions/cache's branch-scoping rules across
+      # workflow_run. The fallback below keeps this reliable either way.
+      - name: Restore cached dependencies
+        id: cache
+        uses: actions/cache@v4
         with:
-          name: node-modules
-          run-id: ${{ github.event.workflow_run.id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: node_modules
+          key: npm-deps-${{ github.event.workflow_run.id }}
 
-      - name: Extract node_modules
-        run: tar -xzf node_modules.tar.gz
+      - name: Install dependencies (only runs on cache miss)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Cache not visible here - installing dependencies as a fallback."
+          time npm ci
 
-      - name: Confirm dependencies were restored, not reinstalled
-        run: du -sh node_modules
+      - name: Confirm dependencies are present
+        run: |
+          echo "Cache hit was: ${{ steps.cache.outputs.cache-hit }}"
+          du -sh node_modules
 
       - name: Run tests (JUnit output)
         id: run_tests
