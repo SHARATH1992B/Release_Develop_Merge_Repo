@@ -19,10 +19,6 @@ jobs:
         with:
           node-version: 18
 
-      # key uses github.run_id, which is unique to THIS workflow run. This
-      # guarantees the cache step below never finds a pre-existing match, so
-      # every PR (and every update to a PR) always installs fresh - no reuse
-      # of a previous PR's cached dependencies.
       - name: Save npm dependencies cache (always a fresh key)
         id: cache
         uses: actions/cache@v4

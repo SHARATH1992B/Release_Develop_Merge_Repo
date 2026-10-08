@@ -36,11 +36,6 @@ jobs:
         with:
           node-version: 18
 
-      # github.event.workflow_run.id is the exact run ID of the Install
-      # Dependencies run that triggered this job - matches what that run
-      # saved under. See note in sonar.yml - the cache may still not be
-      # visible here due to actions/cache's branch-scoping rules across
-      # workflow_run. The fallback below keeps this reliable either way.
       - name: Restore cached dependencies
         id: cache
         uses: actions/cache@v4
