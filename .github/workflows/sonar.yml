@@ -36,14 +36,6 @@ jobs:
         with:
           node-version: 18
 
-      # github.event.workflow_run.id is the exact run ID of the Install
-      # Dependencies run that triggered this job - so this key always matches
-      # the one that run saved under, with no ambiguity from the lock file.
-      # Note: because this job runs via workflow_run, its branch context is
-      # the default branch, which can mean the cache saved under the PR's
-      # branch scope isn't visible here (a documented branch-scoping behavior
-      # of actions/cache). The fallback step below keeps this job reliable
-      # either way.
       - name: Restore cached dependencies
         id: cache
         uses: actions/cache@v4
